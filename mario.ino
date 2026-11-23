@@ -18,6 +18,10 @@ const unsigned char PROGMEM stickman_marche[]   = {0x3C,0x24,0x3C,0x18,0x3A,0x18
 const unsigned char PROGMEM stickman_saut[]     = {0x3C,0x24,0x3C,0x7E,0x18,0x24,0x42,0x81};
 const unsigned char* const SPRITES[3] = {stickman_fix, stickman_marche, stickman_saut};
 
+enum Etat { JEU, GAME_OVER };
+Etat etat = JEU;
+int vies = 3;
+
 float x = 10, y = SOL_Y - 8, vx = 0, vy = 0;
 uint8_t image = 0;
 bool gauche = false, droite = false, sautDemande = false, auSol = true;
@@ -27,6 +31,28 @@ Adafruit_SSD1306 ecran(128, 64, &Wire, -1, 400000UL, 400000UL);
 WiFiServer serveur(5000);
 WiFiClient client;
 bool aUnClient = false;
+
+void replacer() {
+  x = 10; y = SOL_Y - 8; vx = 0; vy = 0;
+  auSol = true;
+  sautDemande = false;
+}
+
+void nouvellePartie() {
+  vies = 3;
+  replacer();
+  etat = JEU;
+}
+
+void perdreVie() {
+  vies--;
+  if (vies <= 0) etat = GAME_OVER;
+  else replacer();
+}
+
+void testerVie() {
+  if (x >= 120) perdreVie();
+}
 
 void lireReseau() {
   bool connecte = client && client.connected();
@@ -51,7 +77,10 @@ void lireReseau() {
       case 'g': gauche = false; break;
       case 'D': droite = true;  break;
       case 'd': droite = false; break;
-      case 'S': sautDemande = true; break;
+      case 'S':
+        if (etat == GAME_OVER) nouvellePartie();
+        else sautDemande = true;
+        break;
     }
   }
 }
@@ -79,8 +108,23 @@ void moteur() {
 
 void dessiner() {
   ecran.clearDisplay();
+  ecran.setTextSize(1);
+  ecran.setCursor(2, 4);
+  ecran.print(vies);
+  ecran.print(vies > 1 ? " vies" : " vie");
+
   ecran.drawFastHLine(0, SOL_Y, 128, SSD1306_WHITE);
   ecran.drawBitmap((int16_t)x, (int16_t)y, SPRITES[image], 8, 8, SSD1306_WHITE);
+
+  if (etat == GAME_OVER) {
+    ecran.fillRect(0, 20, 128, 40, SSD1306_BLACK);
+    ecran.setTextSize(2);
+    ecran.setCursor(10, 24);
+    ecran.print("GAME OVER");
+    ecran.setTextSize(1);
+    ecran.setCursor(14, 48);
+    ecran.print("haut = rejouer");
+  }
   ecran.display();
 }
 
@@ -98,6 +142,9 @@ void loop() {
   prochaine = millis() + PERIODE_FRAME;
   frame++;
   lireReseau();
-  moteur();
+  if (etat == JEU) {
+    moteur();
+    testerVie();
+  }
   dessiner();
 }
